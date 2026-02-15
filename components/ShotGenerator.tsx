@@ -4,7 +4,8 @@ import { Shot, Project } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
   Film, Trash2, Loader2, Plus, 
-  Layers, X, Hash, Upload, Image as ImageIcon
+  Layers, X, Hash, Upload, Image as ImageIcon,
+  ArrowRight, ArrowDownLeft
 } from 'lucide-react';
 import { useTranslation } from '../App';
 
@@ -51,6 +52,23 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
       return;
     }
     setPendingPairs(prev => prev.filter(p => p.id !== id));
+  };
+
+  const syncAlphaToBeta = (id: string) => {
+    setPendingPairs(prev => prev.map(p => 
+      p.id === id ? { ...p, target: p.source } : p
+    ));
+  };
+
+  const syncBetaToNext = (id: string) => {
+    setPendingPairs(prev => {
+      const idx = prev.findIndex(p => p.id === id);
+      if (idx !== -1 && idx < prev.length - 1) {
+        const currentTarget = prev[idx].target;
+        return prev.map((p, i) => i === idx + 1 ? { ...p, source: currentTarget } : p);
+      }
+      return prev;
+    });
   };
 
   const processFile = (file: File): Promise<string> => {
@@ -209,86 +227,88 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-12" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Workbench Section */}
       <div className="lg:col-span-6 space-y-8">
-        <div className="sketch-card p-10 texture-dots relative overflow-hidden">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-black/10 pb-6 mb-8 gap-4">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-black text-white sketch-border">
-                  <Layers size={24} />
-               </div>
-               <div>
-                 <h2 className="text-xl font-black text-black uppercase tracking-tighter leading-tight">Drafting Table</h2>
-                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest mt-0.5">Logic Hub</p>
-               </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col items-end group">
-                <span className="text-[8px] font-black uppercase text-black/40 tracking-widest mb-1">Plate # Start</span>
-                <div className="flex items-center gap-2 border-2 border-black/10 bg-white/50 px-2 py-1 sketch-border hover:border-black transition-colors">
-                  <input 
-                    type="number" 
-                    value={project.startingSequenceNumber || 1}
-                    onChange={(e) => onUpdateProject(prev => ({ ...prev, startingSequenceNumber: parseInt(e.target.value) || 1 }))}
-                    className="w-12 bg-transparent text-xs font-black text-black outline-none border-none text-center"
-                    placeholder="1"
-                  />
-                  <Hash size={14} className="text-black/20" />
+        <div className="sketch-card texture-dots relative flex flex-col h-[90vh]">
+          {/* Sticky Header Area - Compacted */}
+          <div className="sticky top-0 z-40 bg-[#F5F1EA] border-b-2 border-black/10 px-8 pt-8 pb-4 rounded-t-[3rem] shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-2.5 bg-black text-white sketch-border">
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-black uppercase tracking-tighter leading-tight">Drafting Table</h2>
+                  <p className="text-[9px] text-black/40 font-black uppercase tracking-widest mt-0.5">Logic Hub</p>
                 </div>
               </div>
-              
-              <button 
-                onClick={addPair} 
-                className="pencil-button px-6 py-4 font-black uppercase text-[10px] tracking-widest flex items-center gap-2 h-full"
+
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-end">
+                  <span className="text-[7px] font-black uppercase text-black/40 tracking-widest mb-0.5">Start #</span>
+                  <div className="flex items-center gap-1 border border-black/10 bg-white px-1.5 py-0.5 sketch-border hover:border-black transition-colors">
+                    <input 
+                      type="number" 
+                      value={project.startingSequenceNumber || 1}
+                      onChange={(e) => onUpdateProject(prev => ({ ...prev, startingSequenceNumber: parseInt(e.target.value) || 1 }))}
+                      className="w-10 bg-transparent text-[10px] font-black text-black outline-none border-none text-center"
+                    />
+                    <Hash size={12} className="text-black/20" />
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={addPair} 
+                  className="pencil-button px-5 py-3 font-black uppercase text-[9px] tracking-widest flex items-center gap-2 h-full shadow-md"
+                >
+                  <Plus size={12} /> Add Plate
+                </button>
+              </div>
+            </div>
+
+            {/* Batch Drop Zones - Shrunk significantly */}
+            <div className="grid grid-cols-2 gap-3">
+              <div 
+                onDragOver={e => handleDragOver(e, 'alpha')}
+                onDragLeave={() => setDragType(null)}
+                onDrop={e => handleBatchDrop(e, 'alpha')}
+                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'alpha' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
               >
-                <Plus size={14} /> Add Plate
-              </button>
+                <div className="flex items-center gap-2">
+                  <Upload size={14} className="text-black/30" />
+                  <span className="text-[9px] font-black uppercase text-black/60 tracking-widest">Alpha Batch</span>
+                </div>
+              </div>
+              <div 
+                onDragOver={e => handleDragOver(e, 'beta')}
+                onDragLeave={() => setDragType(null)}
+                onDrop={e => handleBatchDrop(e, 'beta')}
+                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'beta' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Upload size={14} className="text-black/30" />
+                  <span className="text-[9px] font-black uppercase text-black/60 tracking-widest">Beta Batch</span>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* New Batch Drop Zones */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
             <div 
-              onDragOver={e => handleDragOver(e, 'alpha')}
+              onDragOver={e => handleDragOver(e, 'mixed')}
               onDragLeave={() => setDragType(null)}
-              onDrop={e => handleBatchDrop(e, 'alpha')}
-              className={`h-24 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'alpha' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+              onDrop={e => handleBatchDrop(e, 'mixed')}
+              className={`h-8 border border-dashed flex items-center justify-center mt-3 texture-hatch transition-all ${dragType === 'mixed' ? 'border-black bg-black/5' : 'border-black/10 opacity-30 hover:opacity-100'}`}
             >
-              <Upload size={18} className="text-black/30 mb-2" />
-              <span className="text-[10px] font-black uppercase text-black/60 tracking-widest">ALPHA BATCH</span>
-              <span className="text-[7px] text-black/30 font-bold uppercase tracking-widest mt-1">Drop Start Frames</span>
-            </div>
-            <div 
-              onDragOver={e => handleDragOver(e, 'beta')}
-              onDragLeave={() => setDragType(null)}
-              onDrop={e => handleBatchDrop(e, 'beta')}
-              className={`h-24 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'beta' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
-            >
-              <Upload size={18} className="text-black/30 mb-2" />
-              <span className="text-[10px] font-black uppercase text-black/60 tracking-widest">BETA BATCH</span>
-              <span className="text-[7px] text-black/30 font-bold uppercase tracking-widest mt-1">Drop End Frames</span>
+              <span className="text-[7px] font-black uppercase text-black/20 tracking-[0.4em]">Mixed Sequential Drop</span>
             </div>
           </div>
 
-          {/* Mixed Project Drop */}
-          <div 
-            onDragOver={e => handleDragOver(e, 'mixed')}
-            onDragLeave={() => setDragType(null)}
-            onDrop={e => handleBatchDrop(e, 'mixed')}
-            className={`h-12 border-2 border-dashed flex items-center justify-center mb-8 texture-hatch transition-all ${dragType === 'mixed' ? 'border-black bg-black/5' : 'border-black/10 opacity-40 hover:opacity-100'}`}
-          >
-            <span className="text-[9px] font-black uppercase text-black/20 tracking-[0.4em]">Mixed Sequential Drop Zone</span>
-          </div>
-
-          {/* Plate List */}
-          <div className="space-y-8 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+          {/* Scrollable Area - Content now includes Plates AND Action controls */}
+          <div className="flex-grow overflow-y-auto p-8 custom-scrollbar space-y-8">
             {pendingPairs.map((pair, idx) => (
-              <div key={pair.id} className="relative p-6 border-2 border-black bg-white/50 group">
-                <div className="absolute top-0 left-0 bg-black text-white text-[10px] font-black px-3 py-1">
+              <div key={pair.id} className="relative p-6 border-2 border-black bg-white group animate-in slide-in-from-left-2 duration-300 shadow-sm">
+                <div className="absolute top-0 left-0 bg-black text-white text-[9px] font-black px-3 py-1">
                   PLATE {(project.startingSequenceNumber || 1) + project.shots.length + idx}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-6 pt-4">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 pt-4">
                   {/* Fixed Alpha Drop Box */}
                   <div 
                     onClick={() => triggerInput(pair.id, 'source')}
@@ -308,6 +328,15 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                       onChange={e => e.target.files?.[0] && handleImageUpload(pair.id, e.target.files[0], 'source')} 
                     />
                   </div>
+
+                  {/* Intra-Plate Sync Button */}
+                  <button 
+                    onClick={() => syncAlphaToBeta(pair.id)}
+                    title="Copy Alpha to Beta"
+                    className="p-1.5 bg-black/5 rounded-full hover:bg-black hover:text-white transition-all text-black/30"
+                  >
+                    <ArrowRight size={14} />
+                  </button>
 
                   {/* Fixed Beta Drop Box */}
                   <div 
@@ -329,6 +358,19 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Inter-Plate Sync Button (Push to Next Alpha) */}
+                {idx < pendingPairs.length - 1 && (
+                  <div className="flex justify-center -mb-2 mt-4 relative z-10">
+                    <button 
+                      onClick={() => syncBetaToNext(pair.id)}
+                      title="Push Beta to Next Alpha"
+                      className="flex items-center gap-2 px-3 py-1 bg-white border border-black/10 rounded-full text-[8px] font-black uppercase tracking-widest text-black/30 hover:text-black hover:border-black transition-all shadow-sm"
+                    >
+                      <ArrowDownLeft size={10} /> Push to Next Alpha
+                    </button>
+                  </div>
+                )}
                 
                 <button onClick={() => removePendingPair(pair.id)} className="absolute top-2 right-2 text-black/20 hover:text-black transition-colors"><X size={16} /></button>
                 {pair.status === 'processing' && (
@@ -338,23 +380,23 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 )}
               </div>
             ))}
-          </div>
 
-          {/* Footer Controls */}
-          <div className="mt-10 pt-8 border-t-2 border-black/5">
-            <label className="text-[9px] font-black uppercase text-black/40 tracking-widest block mb-3">Aesthetic Style Directive</label>
-            <textarea 
-              value={styleDirective}
-              onChange={(e) => setStyleDirective(e.target.value)}
-              className="w-full h-20 bg-white/30 border-2 border-black/10 p-4 text-[11px] text-black font-mono leading-relaxed outline-none focus:border-black transition-all resize-none mb-6"
-            />
-            <button 
-              onClick={processBatch}
-              disabled={isStudioBusy}
-              className="w-full pencil-button py-6 font-black uppercase text-sm tracking-[0.4em]"
-            >
-              {isStudioBusy ? <Loader2 className="animate-spin mx-auto" /> : 'EXECUTE DRAFT'}
-            </button>
+            {/* Non-sticky Footer controls - inside scrollable list */}
+            <div className="pt-8 border-t-2 border-black/5 pb-12">
+              <label className="text-[9px] font-black uppercase text-black/40 tracking-widest block mb-2">Aesthetic Style Directive</label>
+              <textarea 
+                value={styleDirective}
+                onChange={(e) => setStyleDirective(e.target.value)}
+                className="w-full h-24 bg-white border-2 border-black/10 p-4 text-[11px] text-black font-mono leading-relaxed outline-none focus:border-black transition-all resize-none mb-6 custom-scrollbar"
+              />
+              <button 
+                onClick={processBatch}
+                disabled={isStudioBusy}
+                className="w-full pencil-button py-6 font-black uppercase text-sm tracking-[0.4em] shadow-lg active:scale-[0.98]"
+              >
+                {isStudioBusy ? <Loader2 className="animate-spin mx-auto" /> : 'EXECUTE DRAFT'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -365,14 +407,14 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
           <Film className="text-black/20" /> Series Sequence
         </h3>
         
-        <div className="space-y-6 overflow-y-auto max-h-[85vh] pr-4 custom-scrollbar pb-20">
+        <div className="space-y-6 overflow-y-auto h-[85vh] pr-4 custom-scrollbar pb-20">
           {project.shots.length === 0 ? (
             <div className="py-32 text-center border-4 border-dashed border-black/5 texture-hatch opacity-20">
               <span className="font-black uppercase text-xs tracking-[0.5em]">No Plates Sketched</span>
             </div>
           ) : (
             [...project.shots].sort((a,b) => b.sequenceOrder - a.sequenceOrder).map((shot) => (
-              <div key={shot.id} className="sketch-card p-8 group relative overflow-hidden">
+              <div key={shot.id} className="sketch-card p-8 group relative overflow-hidden animate-in fade-in duration-500">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-4">
                     <span className="text-3xl font-black text-black/10 italic">#{shot.sequenceOrder}</span>
@@ -392,7 +434,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                     <div className="p-3 bg-black/5 border-l-4 border-black/20">
                       <p className="text-[10px] text-black/60 italic leading-snug">{shot.visualAnalysis}</p>
                     </div>
-                    <div className="p-4 border-2 border-black/10 bg-white/40 texture-hatch">
+                    <div className="p-4 border-2 border-black/10 bg-white texture-hatch">
                       <p className="text-[11px] text-black font-mono leading-relaxed line-clamp-3">{shot.actionPrompt}</p>
                     </div>
                   </div>
