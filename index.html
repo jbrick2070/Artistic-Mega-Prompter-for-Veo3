@@ -1,0 +1,87 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Continuity (Sketch Edition)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --color-bg: #EAE3D9; /* Aged paper / mural wall */
+        --color-ink: #1A1A1A; /* Graphite / Charcoal */
+        --color-lead: #4A4A4A;
+        --color-paper: #F5F1EA;
+        --color-hatch: rgba(0,0,0,0.1);
+        --color-accent: #6C7A89; /* Blue-pencil lead */
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: var(--color-bg);
+        color: var(--color-ink);
+        overflow-x: hidden;
+      }
+
+      /* Paper Grain & Pencil Textures */
+      .texture-grain {
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        opacity: 0.08;
+      }
+      
+      .texture-hatch {
+        background-image: repeating-linear-gradient(45deg, var(--color-hatch) 0, var(--color-hatch) 1px, transparent 1px, transparent 4px);
+      }
+
+      .texture-hatch-v {
+        background-image: repeating-linear-gradient(90deg, var(--color-hatch) 0, var(--color-hatch) 1px, transparent 1px, transparent 6px);
+      }
+
+      /* Sketch Blocks */
+      .sketch-border {
+        border: 2px solid var(--color-ink);
+        box-shadow: 2px 2px 0px var(--color-ink);
+      }
+
+      .sketch-card {
+        background: var(--color-paper);
+        border: 1px solid var(--color-ink);
+        box-shadow: 6px 6px 0px rgba(0,0,0,0.15);
+      }
+
+      .pencil-button {
+        border: 2px solid var(--color-ink);
+        background: var(--color-paper);
+        color: var(--color-ink);
+        transition: all 0.15s;
+      }
+      .pencil-button:hover {
+        background: var(--color-ink);
+        color: var(--color-paper);
+        transform: translate(-2px, -2px);
+        box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+      }
+
+      /* Custom Scrollbar - Graphite */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: var(--color-bg); }
+      ::-webkit-scrollbar-thumb { background: var(--color-lead); }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@^19.2.4",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+        "react/": "https://esm.sh/react@^19.2.4/",
+        "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+        "three": "https://esm.sh/three@0.160.0",
+        "jszip": "https://esm.sh/jszip@3.10.1",
+        "@google/genai": "https://esm.sh/@google/genai@^1.40.0"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
