@@ -1,12 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Shot, Project } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
-  Film, Trash2, Loader2, CheckCircle2, Sparkles, 
-  Image as ImageIcon, Zap, Plus, 
-  Layers, ArrowRight, X, UploadCloud, MousePointer2, Settings2, Hash, Lock, Unlock,
-  PlusCircle
+  Film, Trash2, Loader2, Plus, 
+  Layers, X, Hash, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { useTranslation } from '../App';
 
@@ -34,12 +32,13 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
     { id: crypto.randomUUID(), source: null, target: null, status: 'idle' }
   ]);
   const [styleDirective, setStyleDirective] = useState<string>(
-    "Pencil sketch animation, rough graphite strokes, heavy cross-hatching, mural aesthetic, high-contrast monochrome."
+    "Cinematic storyboards, high-fidelity textures, detailed lighting, dynamic action sequence."
   );
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [isMasterDragging, setIsMasterDragging] = useState(false);
-  const [isSequenceLocked, setIsSequenceLocked] = useState(true);
   
+  const [dragType, setDragType] = useState<'alpha' | 'beta' | 'mixed' | string | null>(null);
+  
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
   const isRtl = language === 'ar';
 
   const addPair = () => {
@@ -70,47 +69,68 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
     ));
   };
 
-  const handleMasterDrop = async (e: React.DragEvent) => {
+  const handleBatchDrop = async (e: React.DragEvent, type: 'alpha' | 'beta' | 'mixed') => {
     e.preventDefault();
-    setIsMasterDragging(false);
+    setDragType(null);
     
     const files = (Array.from(e.dataTransfer?.files || []) as File[]).filter(f => f.type.startsWith('image/'));
     if (files.length === 0) return;
 
-    const newPairs: PendingPair[] = [];
-    for (let i = 0; i < files.length; i += 2) {
-      const source = await processFile(files[i]);
-      const target = files[i+1] ? await processFile(files[i+1]) : null;
-      newPairs.push({
-        id: crypto.randomUUID(),
-        source,
-        target,
-        status: 'idle'
-      });
-    }
+    const base64Files = await Promise.all(files.map(f => processFile(f)));
 
     setPendingPairs(prev => {
-      const filtered = prev.filter(p => p.source || p.target);
-      return [...filtered, ...newPairs];
+      let currentPairs = [...prev];
+      
+      if (type === 'alpha') {
+        base64Files.forEach((img, i) => {
+          if (currentPairs[i]) {
+            currentPairs[i].source = img;
+          } else {
+            currentPairs.push({ id: crypto.randomUUID(), source: img, target: null, status: 'idle' });
+          }
+        });
+      } else if (type === 'beta') {
+        base64Files.forEach((img, i) => {
+          if (currentPairs[i]) {
+            currentPairs[i].target = img;
+          } else {
+            currentPairs.push({ id: crypto.randomUUID(), source: null, target: img, status: 'idle' });
+          }
+        });
+      } else {
+        const newPairs: PendingPair[] = [];
+        for (let i = 0; i < base64Files.length; i += 2) {
+          newPairs.push({
+            id: crypto.randomUUID(),
+            source: base64Files[i],
+            target: base64Files[i+1] || null,
+            status: 'idle'
+          });
+        }
+        currentPairs = [...currentPairs.filter(p => p.source || p.target), ...newPairs];
+      }
+      
+      return currentPairs;
     });
   };
 
-  const handleDragOver = (e: React.DragEvent, id?: string) => {
+  const handleDragOver = (e: React.DragEvent, type: string) => {
     e.preventDefault();
-    if (id) setDragOverId(id);
-    else setIsMasterDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setDragOverId(null);
-    setIsMasterDragging(false);
+    e.stopPropagation();
+    setDragType(type);
   };
 
   const handleDropSlot = async (e: React.DragEvent, id: string, type: 'source' | 'target') => {
     e.preventDefault();
-    setDragOverId(null);
+    e.stopPropagation();
+    setDragType(null);
     const file = e.dataTransfer.files[0];
     if (file) handleImageUpload(id, file, type);
+  };
+
+  const triggerInput = (id: string, type: 'source' | 'target') => {
+    const key = `${id}-${type}`;
+    fileInputRefs.current[key]?.click();
   };
 
   const processBatch = async () => {
@@ -126,7 +146,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
       setPendingPairs(prev => prev.map(p => p.id === pair.id ? { ...p, status: 'processing' } : p));
       
       try {
-        const systemInstruction = `Architectural Sketch Analyzer. Style: ${styleDirective}. bridge frames with pencil-drawn motion. Output JSON.`;
+        const systemInstruction = `Cinematic Sequence Analyzer. Style: ${styleDirective}. bridge frames with logical, high-fidelity motion. Output JSON.`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
@@ -156,7 +176,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
         const newShot: Shot = {
           id: crypto.randomUUID(),
           sequenceOrder: currentSequenceCount++,
-          topic: result.topic || "Sketch Segment",
+          topic: result.topic || "Sequence Segment",
           visualAnalysis: result.analysis,
           actionPrompt: result.prompt,
           sourceImage: pair.source!,
@@ -174,7 +194,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
         setPendingPairs(prev => prev.map(p => p.id === pair.id ? { ...p, status: 'completed' } : p));
       } catch (err) {
         setPendingPairs(prev => prev.map(p => p.id === pair.id ? { ...p, status: 'error' } : p));
-        if (onApiError) onApiError(err, "Sketching");
+        if (onApiError) onApiError(err, "Analysis");
       }
     }
 
@@ -198,12 +218,11 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                </div>
                <div>
                  <h2 className="text-xl font-black text-black uppercase tracking-tighter leading-tight">Drafting Table</h2>
-                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest mt-0.5">Monochrome Logic Hub</p>
+                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest mt-0.5">Logic Hub</p>
                </div>
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Added Sequence Start Control */}
               <div className="flex flex-col items-end group">
                 <span className="text-[8px] font-black uppercase text-black/40 tracking-widest mb-1">Plate # Start</span>
                 <div className="flex items-center gap-2 border-2 border-black/10 bg-white/50 px-2 py-1 sketch-border hover:border-black transition-colors">
@@ -227,14 +246,38 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
             </div>
           </div>
 
-          {/* Batch Drop */}
+          {/* New Batch Drop Zones */}
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div 
+              onDragOver={e => handleDragOver(e, 'alpha')}
+              onDragLeave={() => setDragType(null)}
+              onDrop={e => handleBatchDrop(e, 'alpha')}
+              className={`h-24 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'alpha' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+            >
+              <Upload size={18} className="text-black/30 mb-2" />
+              <span className="text-[10px] font-black uppercase text-black/60 tracking-widest">ALPHA BATCH</span>
+              <span className="text-[7px] text-black/30 font-bold uppercase tracking-widest mt-1">Drop Start Frames</span>
+            </div>
+            <div 
+              onDragOver={e => handleDragOver(e, 'beta')}
+              onDragLeave={() => setDragType(null)}
+              onDrop={e => handleBatchDrop(e, 'beta')}
+              className={`h-24 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'beta' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+            >
+              <Upload size={18} className="text-black/30 mb-2" />
+              <span className="text-[10px] font-black uppercase text-black/60 tracking-widest">BETA BATCH</span>
+              <span className="text-[7px] text-black/30 font-bold uppercase tracking-widest mt-1">Drop End Frames</span>
+            </div>
+          </div>
+
+          {/* Mixed Project Drop */}
           <div 
-            onDragOver={e => handleDragOver(e)}
-            onDragLeave={handleDragLeave}
-            onDrop={handleMasterDrop}
-            className={`h-14 border-2 border-dashed border-black/10 flex items-center justify-center mb-8 texture-hatch transition-all ${isMasterDragging ? 'border-black bg-black/5' : ''}`}
+            onDragOver={e => handleDragOver(e, 'mixed')}
+            onDragLeave={() => setDragType(null)}
+            onDrop={e => handleBatchDrop(e, 'mixed')}
+            className={`h-12 border-2 border-dashed flex items-center justify-center mb-8 texture-hatch transition-all ${dragType === 'mixed' ? 'border-black bg-black/5' : 'border-black/10 opacity-40 hover:opacity-100'}`}
           >
-            <span className="text-[9px] font-black uppercase text-black/20 tracking-[0.4em]">Project Folder Drop</span>
+            <span className="text-[9px] font-black uppercase text-black/20 tracking-[0.4em]">Mixed Sequential Drop Zone</span>
           </div>
 
           {/* Plate List */}
@@ -246,30 +289,48 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 </div>
                 
                 <div className="grid grid-cols-2 gap-6 pt-4">
-                  {/* Higher Contrast Alpha Drop Box */}
+                  {/* Fixed Alpha Drop Box */}
                   <div 
-                    onDragOver={e => handleDragOver(e, pair.id)}
+                    onClick={() => triggerInput(pair.id, 'source')}
+                    onDragOver={e => handleDragOver(e, `slot-${pair.id}-alpha`)}
+                    onDragLeave={() => setDragType(null)}
                     onDrop={e => handleDropSlot(e, pair.id, 'source')}
-                    className="aspect-video bg-[#D8D0C5] border-2 border-black/20 flex items-center justify-center overflow-hidden cursor-pointer relative shadow-inner hover:border-black transition-colors"
+                    className={`aspect-video bg-[#D8D0C5] border-2 flex items-center justify-center overflow-hidden cursor-pointer relative shadow-inner transition-all ${dragType === `slot-${pair.id}-alpha` ? 'border-black scale-[1.02] bg-white' : 'border-black/30 hover:border-black/60'}`}
                   >
-                    {pair.source ? <img src={pair.source} className="w-full h-full object-cover grayscale brightness-90 contrast-125" /> : <Plus size={24} className="text-black/20" />}
-                    <div className="absolute bottom-1.5 right-1.5 text-[7px] font-black text-black/40 uppercase tracking-widest">Alpha</div>
-                    <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleImageUpload(pair.id, e.target.files[0], 'source')} />
+                    {pair.source ? <img src={pair.source} className="w-full h-full object-cover brightness-90 contrast-110" /> : <Plus size={24} className="text-black/30" />}
+                    <div className="absolute bottom-1.5 right-1.5 text-[7px] font-black text-black/50 uppercase tracking-widest flex items-center gap-1">
+                      <ImageIcon size={8} /> Alpha
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={el => fileInputRefs.current[`${pair.id}-source`] = el}
+                      className="hidden" 
+                      onChange={e => e.target.files?.[0] && handleImageUpload(pair.id, e.target.files[0], 'source')} 
+                    />
                   </div>
 
-                  {/* Higher Contrast Beta Drop Box */}
+                  {/* Fixed Beta Drop Box */}
                   <div 
-                    onDragOver={e => handleDragOver(e, pair.id)}
+                    onClick={() => triggerInput(pair.id, 'target')}
+                    onDragOver={e => handleDragOver(e, `slot-${pair.id}-beta`)}
+                    onDragLeave={() => setDragType(null)}
                     onDrop={e => handleDropSlot(e, pair.id, 'target')}
-                    className="aspect-video bg-[#D8D0C5] border-2 border-black/20 flex items-center justify-center overflow-hidden cursor-pointer relative shadow-inner hover:border-black transition-colors"
+                    className={`aspect-video bg-[#D8D0C5] border-2 flex items-center justify-center overflow-hidden cursor-pointer relative shadow-inner transition-all ${dragType === `slot-${pair.id}-beta` ? 'border-black scale-[1.02] bg-white' : 'border-black/30 hover:border-black/60'}`}
                   >
-                    {pair.target ? <img src={pair.target} className="w-full h-full object-cover grayscale brightness-90 contrast-125" /> : <Plus size={24} className="text-black/20" />}
-                    <div className="absolute bottom-1.5 right-1.5 text-[7px] font-black text-black/40 uppercase tracking-widest">Beta</div>
-                    <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleImageUpload(pair.id, e.target.files[0], 'target')} />
+                    {pair.target ? <img src={pair.target} className="w-full h-full object-cover brightness-90 contrast-110" /> : <Plus size={24} className="text-black/30" />}
+                    <div className="absolute bottom-1.5 right-1.5 text-[7px] font-black text-black/50 uppercase tracking-widest flex items-center gap-1">
+                      <ImageIcon size={8} /> Beta
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={el => fileInputRefs.current[`${pair.id}-target`] = el}
+                      className="hidden" 
+                      onChange={e => e.target.files?.[0] && handleImageUpload(pair.id, e.target.files[0], 'target')} 
+                    />
                   </div>
                 </div>
                 
-                <button onClick={() => removePendingPair(pair.id)} className="absolute top-2 right-2 text-black/20 hover:text-black"><X size={16} /></button>
+                <button onClick={() => removePendingPair(pair.id)} className="absolute top-2 right-2 text-black/20 hover:text-black transition-colors"><X size={16} /></button>
                 {pair.status === 'processing' && (
                   <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-20 backdrop-blur-[1px]">
                     <Loader2 className="animate-spin text-black" size={32} />
@@ -281,7 +342,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
 
           {/* Footer Controls */}
           <div className="mt-10 pt-8 border-t-2 border-black/5">
-            <label className="text-[9px] font-black uppercase text-black/40 tracking-widest block mb-3">Graphite Style Directive</label>
+            <label className="text-[9px] font-black uppercase text-black/40 tracking-widest block mb-3">Aesthetic Style Directive</label>
             <textarea 
               value={styleDirective}
               onChange={(e) => setStyleDirective(e.target.value)}
@@ -301,7 +362,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
       {/* Plate Sequence Section */}
       <div className="lg:col-span-6 space-y-8">
         <h3 className="text-2xl font-black text-black uppercase italic flex items-center gap-4">
-          <Film className="text-black/20" /> Mural Sequence
+          <Film className="text-black/20" /> Series Sequence
         </h3>
         
         <div className="space-y-6 overflow-y-auto max-h-[85vh] pr-4 custom-scrollbar pb-20">
@@ -323,8 +384,8 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 <div className="grid grid-cols-12 gap-8">
                   <div className="col-span-5 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="aspect-video border-2 border-black/10 overflow-hidden grayscale contrast-125"><img src={shot.sourceImage} className="w-full h-full object-cover" /></div>
-                      <div className="aspect-video border-2 border-black/10 overflow-hidden grayscale contrast-125"><img src={shot.targetImage} className="w-full h-full object-cover" /></div>
+                      <div className="aspect-video border-2 border-black/10 overflow-hidden"><img src={shot.sourceImage} className="w-full h-full object-cover" /></div>
+                      <div className="aspect-video border-2 border-black/10 overflow-hidden"><img src={shot.targetImage} className="w-full h-full object-cover" /></div>
                     </div>
                   </div>
                   <div className="col-span-7 space-y-4">
