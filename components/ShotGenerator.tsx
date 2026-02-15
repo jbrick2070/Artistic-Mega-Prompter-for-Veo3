@@ -5,7 +5,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { 
   Film, Trash2, Loader2, Plus, 
   Layers, X, Hash, Upload, Image as ImageIcon,
-  ArrowRight, ArrowDownLeft, Link as LinkIcon, Link2Off, RotateCcw
+  ArrowRight, ArrowDownLeft, Link as LinkIcon, Link2Off, RotateCcw,
+  RefreshCw
 } from 'lucide-react';
 import { useTranslation } from '../App';
 
@@ -46,6 +47,12 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
 
   const addPair = () => {
     setPendingPairs(prev => [...prev, { id: crypto.randomUUID(), source: null, target: null, status: 'idle' }]);
+  };
+
+  const resetTable = () => {
+    if (window.confirm("Are you sure you want to clear the entire Drafting Table? This cannot be undone.")) {
+      setPendingPairs([{ id: crypto.randomUUID(), source: null, target: null, status: 'idle' }]);
+    }
   };
 
   const removePendingPair = (id: string) => {
@@ -119,7 +126,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
         });
       } else {
         if (batchMode === 'chained') {
-          // A -> A, A -> B, B -> B, B -> C ...
           const chained: PendingPair[] = [];
           for (let i = 0; i < base64Files.length; i++) {
             const current = base64Files[i];
@@ -143,7 +149,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
           }
           currentPairs = [...currentPairs, ...chained];
         } else if (batchMode === 'looper') {
-          // A -> A, B -> B, C -> C ...
           const looped: PendingPair[] = base64Files.map(img => ({
             id: crypto.randomUUID(),
             source: img,
@@ -152,7 +157,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
           }));
           currentPairs = [...currentPairs, ...looped];
         } else {
-          // Standard pairwise grouping (A->B, C->D)
           const newPairs: PendingPair[] = [];
           for (let i = 0; i < base64Files.length; i += 2) {
             newPairs.push({
@@ -279,7 +283,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <div className="flex flex-col items-end">
                   <span className="text-[7px] font-black uppercase text-black/50 tracking-widest mb-0.5">Start #</span>
                   <div className="flex items-center gap-1 border border-black/30 bg-white px-1.5 py-0.5 sketch-border hover:border-black transition-colors">
@@ -293,12 +297,22 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                   </div>
                 </div>
                 
-                <button 
-                  onClick={addPair} 
-                  className="pencil-button px-5 py-3 font-black uppercase text-[9px] tracking-widest flex items-center gap-2 h-full shadow-md"
-                >
-                  <Plus size={12} /> Add Plate
-                </button>
+                <div className="flex gap-2 h-full">
+                  <button 
+                    onClick={addPair} 
+                    title="Add new plate"
+                    className="pencil-button px-4 py-2 font-black uppercase text-[9px] tracking-widest flex items-center gap-2 shadow-md bg-white hover:bg-black hover:text-white transition-all"
+                  >
+                    <Plus size={12} /> Add Plate
+                  </button>
+                  <button 
+                    onClick={resetTable} 
+                    title="Reset drafting table"
+                    className="pencil-button px-4 py-2 font-black uppercase text-[9px] tracking-widest flex items-center gap-2 shadow-md bg-red-500/5 hover:bg-red-600 hover:text-white transition-all text-red-600 border-red-500/20"
+                  >
+                    <Trash2 size={12} /> Reset
+                  </button>
+                </div>
               </div>
             </div>
 
