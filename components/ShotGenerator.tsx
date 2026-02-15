@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { 
   Film, Trash2, Loader2, Plus, 
   Layers, X, Hash, Upload, Image as ImageIcon,
-  ArrowRight, ArrowDownLeft
+  ArrowRight, ArrowDownLeft, Link as LinkIcon, Link2Off, RotateCcw
 } from 'lucide-react';
 import { useTranslation } from '../App';
 
@@ -25,6 +25,8 @@ interface ShotGeneratorProps {
   onApiError?: (error: any, context?: string) => void;
 }
 
+type BatchProcessingMode = 'standard' | 'chained' | 'looper';
+
 export const ShotGenerator: React.FC<ShotGeneratorProps> = ({ 
   project, isStudioBusy, setIsStudioBusy, onUpdateProject, onNavigateToExport, onApiError 
 }) => {
@@ -35,7 +37,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
   const [styleDirective, setStyleDirective] = useState<string>(
     "Cinematic storyboards, high-fidelity textures, detailed lighting, dynamic action sequence."
   );
-  
+  const [batchMode, setBatchMode] = useState<BatchProcessingMode>('chained');
   const [dragType, setDragType] = useState<'alpha' | 'beta' | 'mixed' | string | null>(null);
   
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -97,7 +99,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
     const base64Files = await Promise.all(files.map(f => processFile(f)));
 
     setPendingPairs(prev => {
-      let currentPairs = [...prev];
+      let currentPairs = prev.filter(p => p.source || p.target);
       
       if (type === 'alpha') {
         base64Files.forEach((img, i) => {
@@ -116,19 +118,55 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
           }
         });
       } else {
-        const newPairs: PendingPair[] = [];
-        for (let i = 0; i < base64Files.length; i += 2) {
-          newPairs.push({
+        if (batchMode === 'chained') {
+          // A -> A, A -> B, B -> B, B -> C ...
+          const chained: PendingPair[] = [];
+          for (let i = 0; i < base64Files.length; i++) {
+            const current = base64Files[i];
+            const next = base64Files[i + 1];
+
+            chained.push({
+              id: crypto.randomUUID(),
+              source: current,
+              target: current,
+              status: 'idle'
+            });
+
+            if (next) {
+              chained.push({
+                id: crypto.randomUUID(),
+                source: current,
+                target: next,
+                status: 'idle'
+              });
+            }
+          }
+          currentPairs = [...currentPairs, ...chained];
+        } else if (batchMode === 'looper') {
+          // A -> A, B -> B, C -> C ...
+          const looped: PendingPair[] = base64Files.map(img => ({
             id: crypto.randomUUID(),
-            source: base64Files[i],
-            target: base64Files[i+1] || null,
+            source: img,
+            target: img,
             status: 'idle'
-          });
+          }));
+          currentPairs = [...currentPairs, ...looped];
+        } else {
+          // Standard pairwise grouping (A->B, C->D)
+          const newPairs: PendingPair[] = [];
+          for (let i = 0; i < base64Files.length; i += 2) {
+            newPairs.push({
+              id: crypto.randomUUID(),
+              source: base64Files[i],
+              target: base64Files[i+1] || null,
+              status: 'idle'
+            });
+          }
+          currentPairs = [...currentPairs, ...newPairs];
         }
-        currentPairs = [...currentPairs.filter(p => p.source || p.target), ...newPairs];
       }
       
-      return currentPairs;
+      return currentPairs.length > 0 ? currentPairs : [{ id: crypto.randomUUID(), source: null, target: null, status: 'idle' }];
     });
   };
 
@@ -228,7 +266,7 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
       {/* Workbench Section */}
       <div className="lg:col-span-6 space-y-8">
         <div className="sketch-card texture-dots relative flex flex-col h-[90vh]">
-          {/* Sticky Header Area - Compacted */}
+          {/* Sticky Header Area */}
           <div className="sticky top-0 z-40 bg-[#F5F1EA] border-b-2 border-black/10 px-8 pt-8 pb-4 rounded-t-[3rem] shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
               <div className="flex items-center gap-4">
@@ -237,21 +275,21 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 </div>
                 <div>
                   <h2 className="text-lg font-black text-black uppercase tracking-tighter leading-tight">Drafting Table</h2>
-                  <p className="text-[9px] text-black/40 font-black uppercase tracking-widest mt-0.5">Logic Hub</p>
+                  <p className="text-[9px] text-black/60 font-black uppercase tracking-widest mt-0.5">Logic Hub</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-4">
                 <div className="flex flex-col items-end">
-                  <span className="text-[7px] font-black uppercase text-black/40 tracking-widest mb-0.5">Start #</span>
-                  <div className="flex items-center gap-1 border border-black/10 bg-white px-1.5 py-0.5 sketch-border hover:border-black transition-colors">
+                  <span className="text-[7px] font-black uppercase text-black/50 tracking-widest mb-0.5">Start #</span>
+                  <div className="flex items-center gap-1 border border-black/30 bg-white px-1.5 py-0.5 sketch-border hover:border-black transition-colors">
                     <input 
                       type="number" 
                       value={project.startingSequenceNumber || 1}
                       onChange={(e) => onUpdateProject(prev => ({ ...prev, startingSequenceNumber: parseInt(e.target.value) || 1 }))}
                       className="w-10 bg-transparent text-[10px] font-black text-black outline-none border-none text-center"
                     />
-                    <Hash size={12} className="text-black/20" />
+                    <Hash size={12} className="text-black/40" />
                   </div>
                 </div>
                 
@@ -264,43 +302,65 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
               </div>
             </div>
 
-            {/* Batch Drop Zones - Shrunk significantly */}
+            {/* Batch Drop Zones */}
             <div className="grid grid-cols-2 gap-3">
               <div 
                 onDragOver={e => handleDragOver(e, 'alpha')}
                 onDragLeave={() => setDragType(null)}
                 onDrop={e => handleBatchDrop(e, 'alpha')}
-                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'alpha' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'alpha' ? 'border-black bg-black/10 scale-[1.02]' : 'border-black/30 bg-black/5 hover:opacity-100 hover:border-black'}`}
               >
                 <div className="flex items-center gap-2">
-                  <Upload size={14} className="text-black/30" />
-                  <span className="text-[9px] font-black uppercase text-black/60 tracking-widest">Alpha Batch</span>
+                  <Upload size={14} className="text-black/60" />
+                  <span className="text-[9px] font-black uppercase text-black/80 tracking-widest">Alpha Batch</span>
                 </div>
               </div>
               <div 
                 onDragOver={e => handleDragOver(e, 'beta')}
                 onDragLeave={() => setDragType(null)}
                 onDrop={e => handleBatchDrop(e, 'beta')}
-                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'beta' ? 'border-black bg-black/5 scale-[1.02]' : 'border-black/20 bg-black/5 opacity-60 hover:opacity-100'}`}
+                className={`h-14 border-2 border-dashed flex flex-col items-center justify-center texture-hatch transition-all ${dragType === 'beta' ? 'border-black bg-black/10 scale-[1.02]' : 'border-black/30 bg-black/5 hover:opacity-100 hover:border-black'}`}
               >
                 <div className="flex items-center gap-2">
-                  <Upload size={14} className="text-black/30" />
-                  <span className="text-[9px] font-black uppercase text-black/60 tracking-widest">Beta Batch</span>
+                  <Upload size={14} className="text-black/60" />
+                  <span className="text-[9px] font-black uppercase text-black/80 tracking-widest">Beta Batch</span>
                 </div>
               </div>
             </div>
 
-            <div 
-              onDragOver={e => handleDragOver(e, 'mixed')}
-              onDragLeave={() => setDragType(null)}
-              onDrop={e => handleBatchDrop(e, 'mixed')}
-              className={`h-8 border border-dashed flex items-center justify-center mt-3 texture-hatch transition-all ${dragType === 'mixed' ? 'border-black bg-black/5' : 'border-black/10 opacity-30 hover:opacity-100'}`}
-            >
-              <span className="text-[7px] font-black uppercase text-black/20 tracking-[0.4em]">Mixed Sequential Drop</span>
+            <div className="mt-3 flex items-center gap-3">
+              <div 
+                onDragOver={e => handleDragOver(e, 'mixed')}
+                onDragLeave={() => setDragType(null)}
+                onDrop={e => handleBatchDrop(e, 'mixed')}
+                className={`flex-grow h-10 border-2 border-dashed flex items-center justify-center texture-hatch transition-all ${dragType === 'mixed' ? 'border-black bg-black/10' : 'border-black/30 hover:border-black/60'}`}
+              >
+                <span className="text-[8px] font-black uppercase text-black/50 tracking-[0.4em]">Mixed Sequential Drop</span>
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setBatchMode(batchMode === 'chained' ? 'standard' : 'chained')}
+                  className={`h-10 px-4 border-2 flex items-center gap-2 transition-all ${batchMode === 'chained' ? 'bg-black text-white border-black' : 'bg-white text-black/60 border-black/30 hover:border-black'}`}
+                  title={batchMode === 'chained' ? "Chained Mode: Creates Hold -> Action sequence" : "Standard Mode: Pairing images by two"}
+                >
+                  {batchMode === 'chained' ? <LinkIcon size={14} /> : <Link2Off size={14} />}
+                  <span className="text-[7px] font-black uppercase tracking-widest">Chain</span>
+                </button>
+
+                <button 
+                  onClick={() => setBatchMode(batchMode === 'looper' ? 'standard' : 'looper')}
+                  className={`h-10 px-4 border-2 flex items-center gap-2 transition-all ${batchMode === 'looper' ? 'bg-[#C6934B] text-black border-black' : 'bg-white text-black/60 border-black/30 hover:border-black'}`}
+                  title="Looper Mode: Each file creates a Hold plate (A->A)"
+                >
+                  <RotateCcw size={14} />
+                  <span className="text-[7px] font-black uppercase tracking-widest">Looper</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Scrollable Area - Content now includes Plates AND Action controls */}
+          {/* Scrollable Area */}
           <div className="flex-grow overflow-y-auto p-8 custom-scrollbar space-y-8">
             {pendingPairs.map((pair, idx) => (
               <div key={pair.id} className="relative p-6 border-2 border-black bg-white group animate-in slide-in-from-left-2 duration-300 shadow-sm">
@@ -309,7 +369,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                 </div>
                 
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 pt-4">
-                  {/* Fixed Alpha Drop Box */}
                   <div 
                     onClick={() => triggerInput(pair.id, 'source')}
                     onDragOver={e => handleDragOver(e, `slot-${pair.id}-alpha`)}
@@ -329,7 +388,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                     />
                   </div>
 
-                  {/* Intra-Plate Sync Button */}
                   <button 
                     onClick={() => syncAlphaToBeta(pair.id)}
                     title="Copy Alpha to Beta"
@@ -338,7 +396,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                     <ArrowRight size={14} />
                   </button>
 
-                  {/* Fixed Beta Drop Box */}
                   <div 
                     onClick={() => triggerInput(pair.id, 'target')}
                     onDragOver={e => handleDragOver(e, `slot-${pair.id}-beta`)}
@@ -359,7 +416,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
                   </div>
                 </div>
 
-                {/* Inter-Plate Sync Button (Push to Next Alpha) */}
                 {idx < pendingPairs.length - 1 && (
                   <div className="flex justify-center -mb-2 mt-4 relative z-10">
                     <button 
@@ -381,7 +437,6 @@ export const ShotGenerator: React.FC<ShotGeneratorProps> = ({
               </div>
             ))}
 
-            {/* Non-sticky Footer controls - inside scrollable list */}
             <div className="pt-8 border-t-2 border-black/5 pb-12">
               <label className="text-[9px] font-black uppercase text-black/40 tracking-widest block mb-2">Aesthetic Style Directive</label>
               <textarea 
